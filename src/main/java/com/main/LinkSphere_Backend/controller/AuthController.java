@@ -1,5 +1,6 @@
 package com.main.LinkSphere_Backend.controller;
 
+import com.main.LinkSphere_Backend.dto.LoginRequest;
 import com.main.LinkSphere_Backend.dto.RegisterRequest;
 import com.main.LinkSphere_Backend.models.User;
 import com.main.LinkSphere_Backend.sevice.UserService;
@@ -16,6 +17,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
     private UserService userService;
 
+    @PostMapping("/login")
+    public ResponseEntity<?> loginUser(@RequestBody LoginRequest loginRequest){
+        return ResponseEntity.ok(userService.authenticateUser(loginRequest));
+    }
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@RequestBody RegisterRequest registerRequest){
         User user = new User();
