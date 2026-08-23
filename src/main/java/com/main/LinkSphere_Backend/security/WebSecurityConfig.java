@@ -45,7 +45,7 @@ public class WebSecurityConfig {
     }
     @Bean
     public SecurityFilterChain  filterChain(HttpSecurity http) throws Exception{
-        http.csrf(AbstractHttpConfigurer::disable).authorizeHttpRequests(auth->auth.requestMatchers("/api/auth/**").permitAll().requestMatchers("/{shortUrl}").permitAll().requestMatchers("/api/urls/**").authenticated().anyRequest().authenticated());
+        http.csrf(AbstractHttpConfigurer::disable).authorizeHttpRequests(auth->auth.requestMatchers("/health").permitAll().requestMatchers("/api/auth/**").permitAll().requestMatchers("/{shortUrl}").permitAll().requestMatchers("/api/urls/**").authenticated().anyRequest().authenticated());
         http.authenticationProvider(authenticationProvider());
         http.addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
         return http.build();

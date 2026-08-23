@@ -52,11 +52,7 @@ public class UrlMappingController {
         }
         return ResponseEntity.ok(clickEventDTOS);
     }
-    @GetMapping("/health")
-    @PreAuthorize("hasRole('USER')")
-    public String getUrlAnalytics(){
-        return "Server Running Properly";
-    }
+
     @GetMapping("/totalClicks")
     @PreAuthorize("hasRole('USER')")
     public ResponseEntity<Map<LocalDate, Long>> getTotalClicksByDate(Principal principal, @RequestParam("startDate") String startDate, @RequestParam("endDate") String endDate){
