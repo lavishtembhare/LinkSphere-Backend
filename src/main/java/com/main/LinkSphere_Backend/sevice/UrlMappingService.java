@@ -9,6 +9,7 @@ import com.main.LinkSphere_Backend.repo.ClickEventRepository;
 import com.main.LinkSphere_Backend.repo.UrlMappingRepository;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -22,18 +23,20 @@ import java.util.stream.Collectors;
 public class UrlMappingService {
     private UrlMappingRepository urlMappingRepository;
     private ClickEventRepository clickEventRepository;
+
     public UrlMappingDTO createShortUrl(String originalUrl, User user) {
-        String shortUrl= generateShortUrl();
-        UrlMapping urlMapping=new UrlMapping();
+        String shortUrl = generateShortUrl();
+        UrlMapping urlMapping = new UrlMapping();
         urlMapping.setOriginalUrl(originalUrl);
         urlMapping.setShortUrl(shortUrl);
         urlMapping.setUser(user);
         urlMapping.setCreatedDate(LocalDateTime.now());
-        UrlMapping savedUrlMapping=urlMappingRepository.save(urlMapping);
+        UrlMapping savedUrlMapping = urlMappingRepository.save(urlMapping);
         return convertToDto(savedUrlMapping);
     }
-    private UrlMappingDTO convertToDto(UrlMapping urlMapping){
-        UrlMappingDTO urlMappingDTO=new UrlMappingDTO();
+
+    private UrlMappingDTO convertToDto(UrlMapping urlMapping) {
+        UrlMappingDTO urlMappingDTO = new UrlMappingDTO();
         urlMappingDTO.setId(urlMapping.getId());
         urlMappingDTO.setOriginalUrl(urlMapping.getOriginalUrl());
         urlMappingDTO.setShortUrl(urlMapping.getShortUrl());
@@ -44,10 +47,10 @@ public class UrlMappingService {
     }
 
     private String generateShortUrl() {
-        String characters="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        Random random=new Random();
-        StringBuilder shortUrl=new StringBuilder(8);
-        for (int i=0;i<8;i++){
+        String characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        Random random = new Random();
+        StringBuilder shortUrl = new StringBuilder(8);
+        for (int i = 0; i < 8; i++) {
             shortUrl.append(characters.charAt(random.nextInt(characters.length())));
         }
         return shortUrl.toString();
@@ -55,6 +58,20 @@ public class UrlMappingService {
 
     public List<UrlMappingDTO> getUrlsByUser(User user) {
         return urlMappingRepository.findByUser(user).stream().map(this::convertToDto).toList();
+    }
+
+    @Transactional
+    public boolean deleteUrl(String shortUrl, User user) {
+        UrlMapping urlMapping =
+                urlMappingRepository
+                        .findByShortUrlAndUser(shortUrl, user)
+                        .orElse(null);
+        if (urlMapping == null) {
+            return false;
+        }
+        clickEventRepository.deleteByUrlMapping(urlMapping);
+        urlMappingRepository.delete(urlMapping);
+        return true;
     }
 
     public List<ClickEventDTO> getClickEventsByDate(String shortUrl, LocalDateTime start, LocalDateTime end) {
@@ -84,11 +101,11 @@ public class UrlMappingService {
     }
 
     public UrlMapping getOriginalUrl(String shortUrl) {
-        UrlMapping urlMapping=urlMappingRepository.findByShortUrl(shortUrl);
-        if(urlMapping!=null){
-            urlMapping.setClickCount(urlMapping.getClickCount()+1);
+        UrlMapping urlMapping = urlMappingRepository.findByShortUrl(shortUrl);
+        if (urlMapping != null) {
+            urlMapping.setClickCount(urlMapping.getClickCount() + 1);
             urlMappingRepository.save(urlMapping);
-            ClickEvent clickEvent=new ClickEvent();
+            ClickEvent clickEvent = new ClickEvent();
             clickEvent.setClickDate(LocalDateTime.now());
             clickEvent.setUrlMapping(urlMapping);
             clickEventRepository.save(clickEvent);
