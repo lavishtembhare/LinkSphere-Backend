@@ -1,11 +1,13 @@
 package com.main.LinkSphere_Backend.sevice;
 
 import com.main.LinkSphere_Backend.dto.LoginRequest;
+import com.main.LinkSphere_Backend.exception.DuplicateUsernameException;
 import com.main.LinkSphere_Backend.models.User;
 import com.main.LinkSphere_Backend.repo.UserRepository;
 import com.main.LinkSphere_Backend.security.jwt.JwtAuthenticationResponse;
 import com.main.LinkSphere_Backend.security.jwt.JwtUtils;
 import lombok.AllArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -23,8 +25,15 @@ public class UserService {
     private AuthenticationManager authenticationManager;
     private JwtUtils jwtUtils;
     public User registerUser(User user){
+        if (userRepository.existsByUsername(user.getUsername())) {
+            throw new DuplicateUsernameException("Username '" + user.getUsername() + "' is already taken.");
+        }
         user.setPassword(passwordEncoder.encode(user.getPassword()));
-        return userRepository.save(user);
+        try {
+            return userRepository.save(user);
+        } catch (DataIntegrityViolationException e) {
+            throw new DuplicateUsernameException("Username '" + user.getUsername() + "' is already taken.");
+        }
     }
     public JwtAuthenticationResponse authenticateUser(LoginRequest loginRequest){
         Authentication authentication=authenticationManager.authenticate(
