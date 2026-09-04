@@ -1,7 +1,13 @@
 package com.main.LinkSphere_Backend.sevice;
 
+import com.main.LinkSphere_Backend.ai.ClickSummaryService;
+import com.main.LinkSphere_Backend.ai.GroqService;
+import com.main.LinkSphere_Backend.ai.LinkPreviewService;
+import com.main.LinkSphere_Backend.ai.LinkSearchService;
+import com.main.LinkSphere_Backend.ai.UrlSafetyService;
 import com.main.LinkSphere_Backend.dto.ClickEventDTO;
 import com.main.LinkSphere_Backend.dto.UrlMappingDTO;
+import com.main.LinkSphere_Backend.exception.UnsafeUrlException;
 import com.main.LinkSphere_Backend.models.ClickEvent;
 import com.main.LinkSphere_Backend.models.UrlMapping;
 import com.main.LinkSphere_Backend.models.User;
@@ -23,34 +29,72 @@ import java.util.stream.Collectors;
 public class UrlMappingService {
     private UrlMappingRepository urlMappingRepository;
     private ClickEventRepository clickEventRepository;
+    private UrlSafetyService urlSafetyService;
+    private LinkPreviewService linkPreviewService;
+    private ClickSummaryService clickSummaryService;
+    private LinkSearchService linkSearchService;
+    private GroqService groqService;
 
     public UrlMappingDTO createShortUrl(String originalUrl, User user) {
-        String shortUrl = generateShortUrl();
+        if (urlSafetyService.isSuspicious(originalUrl)) {
+            throw new UnsafeUrlException("This URL was flagged as potentially unsafe and can't be shortened.");
+        }
+
+        String shortUrl = resolveShortUrl(originalUrl);
+
         UrlMapping urlMapping = new UrlMapping();
         urlMapping.setOriginalUrl(originalUrl);
         urlMapping.setShortUrl(shortUrl);
         urlMapping.setUser(user);
         urlMapping.setCreatedDate(LocalDateTime.now());
         UrlMapping savedUrlMapping = urlMappingRepository.save(urlMapping);
+
+        linkPreviewService.generateAndSavePreview(savedUrlMapping.getId());
+
         return convertToDto(savedUrlMapping);
     }
 
-    private UrlMappingDTO convertToDto(UrlMapping urlMapping) {
-        UrlMappingDTO urlMappingDTO = new UrlMappingDTO();
-        urlMappingDTO.setId(urlMapping.getId());
-        urlMappingDTO.setOriginalUrl(urlMapping.getOriginalUrl());
-        urlMappingDTO.setShortUrl(urlMapping.getShortUrl());
-        urlMappingDTO.setClickCount(urlMapping.getClickCount());
-        urlMappingDTO.setCreatedDate(urlMapping.getCreatedDate());
-        urlMappingDTO.setUsername(urlMapping.getUser().getUsername());
-        return urlMappingDTO;
+    private String resolveShortUrl(String originalUrl) {
+        String smartSlug = generateSmartSlug(originalUrl);
+        if (smartSlug != null) {
+            if (urlMappingRepository.findByShortUrl(smartSlug) == null) return smartSlug;
+            String withSuffix = smartSlug + "-" + generateShortUrl().substring(0, 4);
+            if (urlMappingRepository.findByShortUrl(withSuffix) == null) return withSuffix;
+        }
+        return generateShortUrl();
+    }
+
+    private String generateSmartSlug(String originalUrl) {
+        String prompt = "Generate a short, memorable, URL-safe slug (2-4 words, lowercase, "
+                + "hyphen-separated, no special characters) that represents the destination "
+                + "of this URL. Respond with ONLY the slug, nothing else.\n\nURL: " + originalUrl;
+
+        String slug = groqService.generateText(prompt);
+        if (slug == null || slug.isBlank()) return null;
+
+        String cleaned = slug.trim().toLowerCase().replaceAll("[^a-z0-9-]", "").replaceAll("-{2,}", "-");
+        return (cleaned.isBlank() || cleaned.length() > 30) ? null : cleaned;
+    }
+
+    private UrlMappingDTO convertToDto(UrlMapping urlMapping){
+        UrlMappingDTO dto = new UrlMappingDTO();
+        dto.setId(urlMapping.getId());
+        dto.setOriginalUrl(urlMapping.getOriginalUrl());
+        dto.setShortUrl(urlMapping.getShortUrl());
+        dto.setClickCount(urlMapping.getClickCount());
+        dto.setCreatedDate(urlMapping.getCreatedDate());
+        dto.setUsername(urlMapping.getUser().getUsername());
+        dto.setPreviewTitle(urlMapping.getPreviewTitle());
+        dto.setPreviewDescription(urlMapping.getPreviewDescription());
+        dto.setActive(urlMapping.isActive());
+        return dto;
     }
 
     private String generateShortUrl() {
-        String characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        Random random = new Random();
-        StringBuilder shortUrl = new StringBuilder(8);
-        for (int i = 0; i < 8; i++) {
+        String characters="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        Random random=new Random();
+        StringBuilder shortUrl=new StringBuilder(8);
+        for (int i=0;i<8;i++){
             shortUrl.append(characters.charAt(random.nextInt(characters.length())));
         }
         return shortUrl.toString();
@@ -58,20 +102,6 @@ public class UrlMappingService {
 
     public List<UrlMappingDTO> getUrlsByUser(User user) {
         return urlMappingRepository.findByUser(user).stream().map(this::convertToDto).toList();
-    }
-
-    @Transactional
-    public boolean deleteUrl(String shortUrl, User user) {
-        UrlMapping urlMapping =
-                urlMappingRepository
-                        .findByShortUrlAndUser(shortUrl, user)
-                        .orElse(null);
-        if (urlMapping == null) {
-            return false;
-        }
-        clickEventRepository.deleteByUrlMapping(urlMapping);
-        urlMappingRepository.delete(urlMapping);
-        return true;
     }
 
     public List<ClickEventDTO> getClickEventsByDate(String shortUrl, LocalDateTime start, LocalDateTime end) {
@@ -100,16 +130,28 @@ public class UrlMappingService {
                 .collect(Collectors.groupingBy(click -> click.getClickDate().toLocalDate(), Collectors.counting()));
     }
 
-    public UrlMapping getOriginalUrl(String shortUrl) {
-        UrlMapping urlMapping = urlMappingRepository.findByShortUrl(shortUrl);
-        if (urlMapping != null) {
-            urlMapping.setClickCount(urlMapping.getClickCount() + 1);
-            urlMappingRepository.save(urlMapping);
-            ClickEvent clickEvent = new ClickEvent();
-            clickEvent.setClickDate(LocalDateTime.now());
-            clickEvent.setUrlMapping(urlMapping);
-            clickEventRepository.save(clickEvent);
-        }
-        return urlMapping;
+    public String getClickSummary(User user, LocalDate start, LocalDate end) {
+        return clickSummaryService.summarize(getTotalClicksByUserAndDate(user, start, end));
+    }
+
+    public List<UrlMappingDTO> searchUrls(String query, User user) {
+        List<UrlMapping> matches = linkSearchService.search(query, urlMappingRepository.findByUser(user));
+        return matches.stream().map(this::convertToDto).toList();
+    }
+
+    public UrlMappingDTO setActiveStatus(String shortUrl, User user, boolean active) {
+        UrlMapping urlMapping = urlMappingRepository.findByShortUrlAndUser(shortUrl, user).orElse(null);
+        if (urlMapping == null) return null;
+        urlMapping.setActive(active);
+        return convertToDto(urlMappingRepository.save(urlMapping));
+    }
+
+    @Transactional
+    public boolean deleteUrl(String shortUrl, User user) {
+        UrlMapping urlMapping = urlMappingRepository.findByShortUrlAndUser(shortUrl, user).orElse(null);
+        if (urlMapping == null) return false;
+        clickEventRepository.deleteByUrlMapping(urlMapping);
+        urlMappingRepository.delete(urlMapping);
+        return true;
     }
 }

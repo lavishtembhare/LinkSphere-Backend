@@ -15,4 +15,7 @@ public class ClickEvent {
     @ManyToOne
     @JoinColumn(name = "url_mapping_id")
     private UrlMapping urlMapping;
+    private String ipAddress;
+    private String userAgent;
+    private boolean suspicious = false;
 }
