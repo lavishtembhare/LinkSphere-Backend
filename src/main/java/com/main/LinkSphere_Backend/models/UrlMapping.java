@@ -18,6 +18,7 @@ public class UrlMapping {
     private String previewTitle;
     private String previewDescription;
     private boolean active = true;
+    private String disabledReason;
 
     @ManyToOne
     @JoinColumn(name = "user_id")

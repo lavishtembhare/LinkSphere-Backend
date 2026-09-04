@@ -1,5 +1,6 @@
 package com.main.LinkSphere_Backend.controller;
 
+import com.main.LinkSphere_Backend.ai.ThreatAnalysisService;
 import com.main.LinkSphere_Backend.models.ClickEvent;
 import com.main.LinkSphere_Backend.models.UrlMapping;
 import com.main.LinkSphere_Backend.repo.ClickEventRepository;
@@ -24,6 +25,7 @@ public class RedirectController {
     private UrlMappingRepository urlMappingRepository;
     private ClickEventRepository clickEventRepository;
     private BotDetectionService botDetectionService;
+    private ThreatAnalysisService threatAnalysisService;
 
     @GetMapping("/{shortUrl}")
     public ResponseEntity<?> redirect(@PathVariable String shortUrl, HttpServletRequest request) {
@@ -33,8 +35,7 @@ public class RedirectController {
         }
 
         if (!urlMapping.isActive()) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("message", "This link has been disabled due to suspicious activity."));
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", disabledMessage(urlMapping)));
         }
 
         String ipAddress = extractClientIp(request);
@@ -55,18 +56,24 @@ public class RedirectController {
 
         if (botDetectionService.isUnderBurstAttack(urlMapping)) {
             urlMapping.setActive(false);
+            threatAnalysisService.analyzeAndExplain(urlMapping.getId());
         }
 
         urlMappingRepository.save(urlMapping);
 
         if (!urlMapping.isActive()) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("message", "This link has been disabled due to suspicious activity."));
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", disabledMessage(urlMapping)));
         }
 
         return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.LOCATION, urlMapping.getOriginalUrl())
                 .build();
+    }
+
+    private String disabledMessage(UrlMapping urlMapping) {
+        return urlMapping.getDisabledReason() != null
+                ? urlMapping.getDisabledReason()
+                : "This link has been disabled due to suspicious activity.";
     }
 
     private String extractClientIp(HttpServletRequest request) {

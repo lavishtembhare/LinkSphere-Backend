@@ -15,4 +15,5 @@ public class UrlMappingDTO {
     private String previewTitle;
     private String previewDescription;
     private boolean active;
+    private String disabledReason;
 }

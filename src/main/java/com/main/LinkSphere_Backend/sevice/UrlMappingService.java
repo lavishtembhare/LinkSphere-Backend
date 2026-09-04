@@ -87,6 +87,7 @@ public class UrlMappingService {
         dto.setPreviewTitle(urlMapping.getPreviewTitle());
         dto.setPreviewDescription(urlMapping.getPreviewDescription());
         dto.setActive(urlMapping.isActive());
+        dto.setDisabledReason(urlMapping.getDisabledReason());
         return dto;
     }
 
@@ -143,6 +144,9 @@ public class UrlMappingService {
         UrlMapping urlMapping = urlMappingRepository.findByShortUrlAndUser(shortUrl, user).orElse(null);
         if (urlMapping == null) return null;
         urlMapping.setActive(active);
+        if (active) {
+            urlMapping.setDisabledReason(null);
+        }
         return convertToDto(urlMappingRepository.save(urlMapping));
     }
 
