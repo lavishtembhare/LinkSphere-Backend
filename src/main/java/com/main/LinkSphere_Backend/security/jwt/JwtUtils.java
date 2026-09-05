@@ -1,7 +1,6 @@
 package com.main.LinkSphere_Backend.security.jwt;
 
 import com.main.LinkSphere_Backend.sevice.UserDetailsImpl;
-import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -20,6 +19,7 @@ public class JwtUtils {
     private String jwtSecret;
     @Value("${jwt.expiration}")
     private int jwtExpirationMs;
+
     public String getJwtFromHeader(HttpServletRequest request){
         String bearerToken= request.getHeader("Authorization");
         if(bearerToken!=null&&bearerToken.startsWith("Bearer ")){
@@ -27,17 +27,29 @@ public class JwtUtils {
         }
         return null;
     }
+
     public String generateToken(UserDetailsImpl userDetails){
         String username= userDetails.getUsername();
         String roles= userDetails.getAuthorities().stream().map(authority->authority.getAuthority()).collect(Collectors.joining(","));
+        return buildToken(username, roles);
+    }
+
+    public String generateTokenFromUsername(String username, String role){
+        return buildToken(username, role);
+    }
+
+    private String buildToken(String username, String roles) {
         return Jwts.builder().setSubject(username).claim("roles",roles).issuedAt(new Date()).expiration(new Date((new Date().getTime() + jwtExpirationMs))).signWith(key()).compact();
     }
+
     public String getUserFromJwtToken(String token){
         return Jwts.parser().verifyWith((SecretKey) key()).build().parseSignedClaims(token).getPayload().getSubject();
     }
+
     private Key key(){
         return Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
     }
+
     public boolean validateToken(String authToken){
         try {
             Jwts.parser().verifyWith((SecretKey) key()).build().parseSignedClaims(authToken);

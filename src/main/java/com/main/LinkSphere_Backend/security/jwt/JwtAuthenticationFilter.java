@@ -1,5 +1,6 @@
 package com.main.LinkSphere_Backend.security.jwt;
 
+import com.main.LinkSphere_Backend.sevice.RefreshTokenService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,6 +22,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private JwtUtils jwtTokenProvider;
     @Autowired
     private UserDetailsService userDetailsService;
+    @Autowired
+    private RefreshTokenService refreshTokenService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
@@ -28,11 +31,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (jwt != null && jwtTokenProvider.validateToken(jwt)) {
             try {
                 String username = jwtTokenProvider.getUserFromJwtToken(jwt);
-                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+
+                if (refreshTokenService.isCurrentAccessToken(username, jwt)) {
+                    UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                } else {
+                    SecurityContextHolder.clearContext();
+                }
             } catch (Exception e) {
                 SecurityContextHolder.clearContext();
             }

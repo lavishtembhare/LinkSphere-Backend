@@ -18,4 +18,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleDuplicateUsername(DuplicateUsernameException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", e.getMessage()));
     }
+    @ExceptionHandler(TokenRefreshException.class)
+    public ResponseEntity<Map<String, String>> handleTokenRefresh(TokenRefreshException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
+    }
 }

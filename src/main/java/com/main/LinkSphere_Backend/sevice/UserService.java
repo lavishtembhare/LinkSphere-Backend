@@ -2,6 +2,7 @@ package com.main.LinkSphere_Backend.sevice;
 
 import com.main.LinkSphere_Backend.dto.LoginRequest;
 import com.main.LinkSphere_Backend.exception.DuplicateUsernameException;
+import com.main.LinkSphere_Backend.models.RefreshToken;
 import com.main.LinkSphere_Backend.models.User;
 import com.main.LinkSphere_Backend.repo.UserRepository;
 import com.main.LinkSphere_Backend.security.jwt.JwtAuthenticationResponse;
@@ -11,7 +12,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,6 +24,8 @@ public class UserService {
     private UserRepository userRepository;
     private AuthenticationManager authenticationManager;
     private JwtUtils jwtUtils;
+    private RefreshTokenService refreshTokenService;
+
     public User registerUser(User user){
         if (userRepository.existsByUsername(user.getUsername())) {
             throw new DuplicateUsernameException("Username '" + user.getUsername() + "' is already taken.");
@@ -35,18 +37,25 @@ public class UserService {
             throw new DuplicateUsernameException("Username '" + user.getUsername() + "' is already taken.");
         }
     }
+
     public JwtAuthenticationResponse authenticateUser(LoginRequest loginRequest){
         Authentication authentication=authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(loginRequest.getUsername(),loginRequest.getPassword()));
         SecurityContextHolder.getContext().setAuthentication(authentication);
         UserDetailsImpl userDetails= (UserDetailsImpl) authentication.getPrincipal();
         String jwt=jwtUtils.generateToken(userDetails);
-        return new JwtAuthenticationResponse(jwt);
+
+        User user = userRepository.findByUsername(loginRequest.getUsername())
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(user);
+        refreshTokenService.updateAccessToken(refreshToken, jwt);
+
+        return new JwtAuthenticationResponse(jwt, refreshToken.getToken());
     }
 
     public User findByUsername(String name) {
-         return userRepository.findByUsername(name).orElseThrow(
-                 ()->new UsernameNotFoundException("User not Found")
-         );
+        return userRepository.findByUsername(name).orElseThrow(
+                ()->new UsernameNotFoundException("User not Found")
+        );
     }
 }
