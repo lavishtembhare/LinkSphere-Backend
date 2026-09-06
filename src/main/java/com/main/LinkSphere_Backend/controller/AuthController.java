@@ -78,7 +78,7 @@ public class AuthController {
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest request) {
         userService.initiatePasswordReset(request.getUsernameOrEmail());
-        return ResponseEntity.ok(Map.of("message", "If that account exists, a verification code has been sent to its registered email."));
+        return ResponseEntity.ok(Map.of("message", "Check your email."));
     }
 
     @PostMapping("/forgot-password/verify-otp")
