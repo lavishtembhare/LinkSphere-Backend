@@ -1,7 +1,6 @@
 package com.main.LinkSphere_Backend.controller;
 
-import com.main.LinkSphere_Backend.dto.LoginRequest;
-import com.main.LinkSphere_Backend.dto.RegisterRequest;
+import com.main.LinkSphere_Backend.dto.*;
 import com.main.LinkSphere_Backend.exception.TokenRefreshException;
 import com.main.LinkSphere_Backend.models.RefreshToken;
 import com.main.LinkSphere_Backend.models.User;
@@ -27,19 +26,25 @@ public class AuthController {
     private JwtUtils jwtUtils;
 
     @PostMapping("/login")
-    public ResponseEntity<?> loginUser(@RequestBody LoginRequest loginRequest){
+    public ResponseEntity<?> loginUser(@RequestBody LoginRequest loginRequest) {
         return ResponseEntity.ok(userService.authenticateUser(loginRequest));
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> registerUser(@RequestBody RegisterRequest registerRequest){
+    public ResponseEntity<?> registerUser(@RequestBody RegisterRequest registerRequest) {
         User user = new User();
         user.setUsername(registerRequest.getUsername());
         user.setEmail(registerRequest.getEmail());
         user.setPassword(registerRequest.getPassword());
         user.setRole("ROLE_USER");
         userService.registerUser(user);
-        return ResponseEntity.ok("Registration Successful");
+        return ResponseEntity.ok(Map.of("message", "Verification code sent to your email. Please verify to complete registration."));
+    }
+
+    @PostMapping("/register/verify-otp")
+    public ResponseEntity<?> verifyRegistrationOtp(@RequestBody VerifyRegistrationOtpRequest request) {
+        userService.verifyRegistrationOtp(request.getUsername(), request.getOtp());
+        return ResponseEntity.ok(Map.of("message", "Email verified — registration complete. You can now log in."));
     }
 
     @PostMapping("/refresh")
@@ -68,5 +73,23 @@ public class AuthController {
             refreshTokenService.findByToken(requestRefreshToken).ifPresent(refreshTokenService::delete);
         }
         return ResponseEntity.ok(Map.of("message", "Logged out successfully."));
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest request) {
+        userService.initiatePasswordReset(request.getUsernameOrEmail());
+        return ResponseEntity.ok(Map.of("message", "If that account exists, a verification code has been sent to its registered email."));
+    }
+
+    @PostMapping("/forgot-password/verify-otp")
+    public ResponseEntity<?> verifyResetOtp(@RequestBody VerifyResetOtpRequest request) {
+        String resetToken = userService.verifyPasswordResetOtp(request.getUsernameOrEmail(), request.getOtp());
+        return ResponseEntity.ok(Map.of("resetToken", resetToken));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordRequest request) {
+        userService.resetPassword(request.getResetToken(), request.getNewPassword());
+        return ResponseEntity.ok(Map.of("message", "Password reset successfully. Please log in with your new password."));
     }
 }

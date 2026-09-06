@@ -6,6 +6,7 @@ import com.main.LinkSphere_Backend.models.User;
 import com.main.LinkSphere_Backend.repo.RefreshTokenRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -44,6 +45,7 @@ public class RefreshTokenService {
         }
         return token;
     }
+
     public void updateAccessToken(RefreshToken refreshToken, String newAccessToken) {
         refreshToken.setCurrentAccessToken(newAccessToken);
         refreshTokenRepository.save(refreshToken);
@@ -52,6 +54,11 @@ public class RefreshTokenService {
     public boolean isCurrentAccessToken(String username, String accessToken) {
         List<RefreshToken> sessions = refreshTokenRepository.findByUserUsername(username);
         return sessions.stream().anyMatch(rt -> accessToken.equals(rt.getCurrentAccessToken()));
+    }
+
+    @Transactional
+    public void deleteAllForUser(User user) {
+        refreshTokenRepository.deleteByUser(user);
     }
 
     public void delete(RefreshToken token) {

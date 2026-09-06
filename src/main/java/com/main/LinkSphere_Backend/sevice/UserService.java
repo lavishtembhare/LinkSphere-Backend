@@ -1,9 +1,14 @@
 package com.main.LinkSphere_Backend.sevice;
 
 import com.main.LinkSphere_Backend.dto.LoginRequest;
+import com.main.LinkSphere_Backend.exception.DuplicateEmailException;
 import com.main.LinkSphere_Backend.exception.DuplicateUsernameException;
+import com.main.LinkSphere_Backend.exception.OtpException;
+import com.main.LinkSphere_Backend.models.OtpPurpose;
+import com.main.LinkSphere_Backend.models.OtpVerification;
 import com.main.LinkSphere_Backend.models.RefreshToken;
 import com.main.LinkSphere_Backend.models.User;
+import com.main.LinkSphere_Backend.repo.OtpVerificationRepository;
 import com.main.LinkSphere_Backend.repo.UserRepository;
 import com.main.LinkSphere_Backend.security.jwt.JwtAuthenticationResponse;
 import com.main.LinkSphere_Backend.security.jwt.JwtUtils;
@@ -16,6 +21,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.Optional;
 
 @Service
 @AllArgsConstructor
@@ -25,17 +34,54 @@ public class UserService {
     private AuthenticationManager authenticationManager;
     private JwtUtils jwtUtils;
     private RefreshTokenService refreshTokenService;
+    private OtpService otpService;
+    private OtpVerificationRepository otpVerificationRepository;
 
+    @Transactional
     public User registerUser(User user){
-        if (userRepository.existsByUsername(user.getUsername())) {
-            throw new DuplicateUsernameException("Username '" + user.getUsername() + "' is already taken.");
+        Optional<User> existing = userRepository.findByUsername(user.getUsername());
+
+        if (existing.isPresent()) {
+            User existingUser = existing.get();
+            if (existingUser.isEnabled()) {
+                throw new DuplicateUsernameException("Username '" + user.getUsername() + "' is already taken.");
+            }
+            if (!existingUser.getEmail().equalsIgnoreCase(user.getEmail())
+                    && userRepository.existsByEmail(user.getEmail())) {
+                throw new DuplicateEmailException("An account with that email address already exists.");
+            }
+            existingUser.setEmail(user.getEmail());
+            existingUser.setPassword(passwordEncoder.encode(user.getPassword()));
+            User saved = userRepository.save(existingUser);
+            otpService.generateAndSendOtp(saved, saved.getEmail(), OtpPurpose.REGISTRATION, "verifying your email address");
+            return saved;
         }
+
+        if (userRepository.existsByEmail(user.getEmail())) {
+            throw new DuplicateEmailException("An account with that email address already exists.");
+        }
+
         user.setPassword(passwordEncoder.encode(user.getPassword()));
+        user.setEnabled(false);
+        User saved;
         try {
-            return userRepository.save(user);
+            saved = userRepository.save(user);
         } catch (DataIntegrityViolationException e) {
             throw new DuplicateUsernameException("Username '" + user.getUsername() + "' is already taken.");
         }
+        otpService.generateAndSendOtp(saved, saved.getEmail(), OtpPurpose.REGISTRATION, "verifying your email address");
+        return saved;
+    }
+
+    @Transactional
+    public void verifyRegistrationOtp(String username, String otp) {
+        User user = findByUsername(username);
+        if (user.isEnabled()) {
+            throw new OtpException("This account is already verified — please log in.");
+        }
+        otpService.verifyOtp(user, OtpPurpose.REGISTRATION, otp);
+        user.setEnabled(true);
+        userRepository.save(user);
     }
 
     public JwtAuthenticationResponse authenticateUser(LoginRequest loginRequest){
@@ -57,5 +103,82 @@ public class UserService {
         return userRepository.findByUsername(name).orElseThrow(
                 ()->new UsernameNotFoundException("User not Found")
         );
+    }
+
+    // ---------- Profile management ----------
+
+    @Transactional
+    public JwtAuthenticationResponse updateUsername(String currentUsername, String newUsername) {
+        if (currentUsername.equals(newUsername)) {
+            throw new DuplicateUsernameException("That's already your current username.");
+        }
+        if (userRepository.existsByUsername(newUsername)) {
+            throw new DuplicateUsernameException("Username '" + newUsername + "' is already taken.");
+        }
+
+        User user = findByUsername(currentUsername);
+        user.setUsername(newUsername);
+        userRepository.save(user);
+
+        refreshTokenService.deleteAllForUser(user);
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(user);
+        String newAccessToken = jwtUtils.generateTokenFromUsername(newUsername, user.getRole());
+        refreshTokenService.updateAccessToken(refreshToken, newAccessToken);
+
+        return new JwtAuthenticationResponse(newAccessToken, refreshToken.getToken());
+    }
+
+    public void requestEmailChange(String username, String newEmail) {
+        User user = findByUsername(username);
+        if (newEmail.equalsIgnoreCase(user.getEmail())) {
+            throw new OtpException("That's already your current email address.");
+        }
+        if (userRepository.existsByEmail(newEmail)) {
+            throw new OtpException("That email address is already in use.");
+        }
+        otpService.generateAndSendOtp(user, newEmail, OtpPurpose.EMAIL_CHANGE, "changing your email address");
+    }
+
+    @Transactional
+    public void confirmEmailChange(String username, String otp) {
+        User user = findByUsername(username);
+        OtpVerification record = otpService.verifyOtp(user, OtpPurpose.EMAIL_CHANGE, otp);
+        user.setEmail(record.getTargetEmail());
+        userRepository.save(user);
+    }
+
+    // ---------- Forgot password (no login required) ----------
+
+    public void initiatePasswordReset(String usernameOrEmail) {
+        userRepository.findByUsernameOrEmail(usernameOrEmail, usernameOrEmail).ifPresent(user ->
+                otpService.generateAndSendOtp(user, user.getEmail(), OtpPurpose.PASSWORD_RESET, "resetting your password")
+        );
+    }
+
+    public String verifyPasswordResetOtp(String usernameOrEmail, String otp) {
+        User user = userRepository.findByUsernameOrEmail(usernameOrEmail, usernameOrEmail)
+                .orElseThrow(() -> new OtpException("Incorrect verification code."));
+        OtpVerification record = otpService.verifyOtp(user, OtpPurpose.PASSWORD_RESET, otp);
+        return record.getResetToken();
+    }
+
+    @Transactional
+    public void resetPassword(String resetToken, String newPassword) {
+        OtpVerification record = otpVerificationRepository
+                .findByResetTokenAndPurpose(resetToken, OtpPurpose.PASSWORD_RESET)
+                .orElseThrow(() -> new OtpException("Invalid or expired reset token."));
+
+        if (!record.isVerified() || record.getExpiryDate().isBefore(LocalDateTime.now())) {
+            throw new OtpException("Invalid or expired reset token.");
+        }
+
+        User user = record.getUser();
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        refreshTokenService.deleteAllForUser(user);
+
+        record.setResetToken(null);
+        otpVerificationRepository.save(record);
     }
 }
