@@ -3,12 +3,16 @@ package com.main.LinkSphere_Backend.sevice;
 import com.main.LinkSphere_Backend.dto.LoginRequest;
 import com.main.LinkSphere_Backend.exception.DuplicateEmailException;
 import com.main.LinkSphere_Backend.exception.DuplicateUsernameException;
+import com.main.LinkSphere_Backend.exception.InvalidCredentialsException;
 import com.main.LinkSphere_Backend.exception.OtpException;
 import com.main.LinkSphere_Backend.models.OtpPurpose;
 import com.main.LinkSphere_Backend.models.OtpVerification;
 import com.main.LinkSphere_Backend.models.RefreshToken;
+import com.main.LinkSphere_Backend.models.UrlMapping;
 import com.main.LinkSphere_Backend.models.User;
+import com.main.LinkSphere_Backend.repo.ClickEventRepository;
 import com.main.LinkSphere_Backend.repo.OtpVerificationRepository;
+import com.main.LinkSphere_Backend.repo.UrlMappingRepository;
 import com.main.LinkSphere_Backend.repo.UserRepository;
 import com.main.LinkSphere_Backend.security.jwt.JwtAuthenticationResponse;
 import com.main.LinkSphere_Backend.security.jwt.JwtUtils;
@@ -24,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -36,6 +41,8 @@ public class UserService {
     private RefreshTokenService refreshTokenService;
     private OtpService otpService;
     private OtpVerificationRepository otpVerificationRepository;
+    private UrlMappingRepository urlMappingRepository;
+    private ClickEventRepository clickEventRepository;
 
     @Transactional
     public User registerUser(User user){
@@ -180,5 +187,35 @@ public class UserService {
 
         record.setResetToken(null);
         otpVerificationRepository.save(record);
+    }
+
+    // ---------- Account deletion ----------
+
+    public void requestAccountDeletion(String username, String password) {
+        User user = findByUsername(username);
+        if (!passwordEncoder.matches(password, user.getPassword())) {
+            throw new InvalidCredentialsException("Incorrect password.");
+        }
+        otpService.generateAndSendOtp(user, user.getEmail(), OtpPurpose.ACCOUNT_DELETION, "confirming account deletion");
+    }
+
+    @Transactional
+    public void confirmAccountDeletion(String username, String otp) {
+        User user = findByUsername(username);
+        otpService.verifyOtp(user, OtpPurpose.ACCOUNT_DELETION, otp);
+
+        // Deepest dependency first — ClickEvent references UrlMapping,
+        // UrlMapping references User, same ordering deleteUrl() already
+        // relies on elsewhere in this project.
+        List<UrlMapping> urlMappings = urlMappingRepository.findByUser(user);
+        for (UrlMapping mapping : urlMappings) {
+            clickEventRepository.deleteByUrlMapping(mapping);
+        }
+        urlMappingRepository.deleteAll(urlMappings);
+
+        refreshTokenService.deleteAllForUser(user);
+        otpVerificationRepository.deleteByUser(user);
+
+        userRepository.delete(user);
     }
 }

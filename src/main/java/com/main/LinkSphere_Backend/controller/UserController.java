@@ -1,5 +1,6 @@
 package com.main.LinkSphere_Backend.controller;
 
+import com.main.LinkSphere_Backend.dto.DeleteAccountRequest;
 import com.main.LinkSphere_Backend.dto.EmailChangeRequest;
 import com.main.LinkSphere_Backend.dto.UpdateUsernameRequest;
 import com.main.LinkSphere_Backend.dto.VerifyOtpRequest;
@@ -37,5 +38,19 @@ public class UserController {
     public ResponseEntity<?> confirmEmailChange(@RequestBody VerifyOtpRequest request, Principal principal) {
         userService.confirmEmailChange(principal.getName(), request.getOtp());
         return ResponseEntity.ok(Map.of("message", "Email address updated successfully."));
+    }
+
+    @PostMapping("/delete-account/request")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<?> requestAccountDeletion(@RequestBody DeleteAccountRequest request, Principal principal) {
+        userService.requestAccountDeletion(principal.getName(), request.getPassword());
+        return ResponseEntity.ok(Map.of("message", "Verification code sent to your email. Confirm to permanently delete your account."));
+    }
+
+    @PostMapping("/delete-account/confirm")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<?> confirmAccountDeletion(@RequestBody VerifyOtpRequest request, Principal principal) {
+        userService.confirmAccountDeletion(principal.getName(), request.getOtp());
+        return ResponseEntity.ok(Map.of("message", "Your account and all associated data have been permanently deleted."));
     }
 }
