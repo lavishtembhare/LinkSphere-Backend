@@ -41,7 +41,7 @@ public class RefreshTokenService {
     public RefreshToken verifyExpiration(RefreshToken token) {
         if (token.getExpiryDate().isBefore(LocalDateTime.now())) {
             refreshTokenRepository.delete(token);
-            throw new TokenRefreshException("Refresh token has expired. Please sign in again.");
+            throw new TokenRefreshException("Please sign in again.");
         }
         return token;
     }

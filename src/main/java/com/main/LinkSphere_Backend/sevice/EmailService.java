@@ -23,7 +23,7 @@ public class EmailService {
         message.setTo(toEmail);
         message.setSubject("LinkSphere verification code");
         message.setText("Your verification code for " + purposeDescription + " is: " + otp
-                + "\n\nThis code expires in 10 minutes. If you didn't request this, you can safely ignore this email.");
+                + "\n\nThis code expires in 10 minutes.");
         mailSender.send(message);
     }
 }

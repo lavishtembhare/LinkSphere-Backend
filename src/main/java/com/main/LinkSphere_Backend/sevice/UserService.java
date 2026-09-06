@@ -112,8 +112,6 @@ public class UserService {
         );
     }
 
-    // ---------- Profile management ----------
-
     @Transactional
     public JwtAuthenticationResponse updateUsername(String currentUsername, String newUsername) {
         if (currentUsername.equals(newUsername)) {
@@ -154,8 +152,6 @@ public class UserService {
         userRepository.save(user);
     }
 
-    // ---------- Forgot password (no login required) ----------
-
     public void initiatePasswordReset(String usernameOrEmail) {
         userRepository.findByUsernameOrEmail(usernameOrEmail, usernameOrEmail).ifPresent(user ->
                 otpService.generateAndSendOtp(user, user.getEmail(), OtpPurpose.PASSWORD_RESET, "resetting your password")
@@ -189,8 +185,6 @@ public class UserService {
         otpVerificationRepository.save(record);
     }
 
-    // ---------- Account deletion ----------
-
     public void requestAccountDeletion(String username, String password) {
         User user = findByUsername(username);
         if (!passwordEncoder.matches(password, user.getPassword())) {
@@ -203,10 +197,6 @@ public class UserService {
     public void confirmAccountDeletion(String username, String otp) {
         User user = findByUsername(username);
         otpService.verifyOtp(user, OtpPurpose.ACCOUNT_DELETION, otp);
-
-        // Deepest dependency first — ClickEvent references UrlMapping,
-        // UrlMapping references User, same ordering deleteUrl() already
-        // relies on elsewhere in this project.
         List<UrlMapping> urlMappings = urlMappingRepository.findByUser(user);
         for (UrlMapping mapping : urlMappings) {
             clickEventRepository.deleteByUrlMapping(mapping);
