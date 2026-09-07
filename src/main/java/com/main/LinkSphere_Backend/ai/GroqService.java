@@ -2,9 +2,11 @@ package com.main.LinkSphere_Backend.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.util.retry.Retry;
 
 import java.time.Duration;
@@ -23,17 +25,24 @@ public class GroqService {
     @Value("${groq.api.key}")
     private String groqApiKey;
 
-    @Value("${groq.model:llama-3.3-70b-versatile}")
+    @Value("${groq.model:openai/gpt-oss-120b}")
     private String groqModel;
 
     public GroqService(WebClient.Builder webClientBuilder) {
         this.webClient = webClientBuilder.build();
     }
 
+    @PostConstruct
+    public void logConfig() {
+        System.out.println("Groq API URL configured as: " + groqApiUrl);
+        System.out.println("Groq model configured as: " + groqModel);
+    }
+
     public String generateText(String prompt) {
         Map<String, Object> requestBody = Map.of(
                 "model", groqModel,
-                "messages", List.of(Map.of("role", "user", "content", prompt))
+                "messages", List.of(Map.of("role", "user", "content", prompt)),
+                "reasoning_effort", "low"
         );
 
         try {
@@ -49,6 +58,10 @@ public class GroqService {
                     .block();
 
             return extractGroqText(rawResponse);
+        } catch (WebClientResponseException e) {
+            System.err.println("Groq API call failed: HTTP " + e.getStatusCode()
+                    + " calling " + groqApiUrl + " — response body: " + e.getResponseBodyAsString());
+            return null;
         } catch (Exception e) {
             System.err.println("Groq API call failed: " + e.getMessage());
             return null;

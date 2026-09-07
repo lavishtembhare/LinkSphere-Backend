@@ -7,7 +7,6 @@ import com.main.LinkSphere_Backend.ai.LinkSearchService;
 import com.main.LinkSphere_Backend.ai.UrlSafetyService;
 import com.main.LinkSphere_Backend.dto.ClickEventDTO;
 import com.main.LinkSphere_Backend.dto.UrlMappingDTO;
-import com.main.LinkSphere_Backend.exception.UnsafeUrlException;
 import com.main.LinkSphere_Backend.models.ClickEvent;
 import com.main.LinkSphere_Backend.models.UrlMapping;
 import com.main.LinkSphere_Backend.models.User;
@@ -36,9 +35,7 @@ public class UrlMappingService {
     private GroqService groqService;
 
     public UrlMappingDTO createShortUrl(String originalUrl, User user) {
-        if (urlSafetyService.isSuspicious(originalUrl)) {
-            throw new UnsafeUrlException("This URL was flagged as potentially unsafe and can't be shortened.");
-        }
+        urlSafetyService.assertSafe(originalUrl);
 
         String shortUrl = resolveShortUrl(originalUrl);
 

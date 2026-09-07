@@ -34,4 +34,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleInvalidCredentials(InvalidCredentialsException e) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", e.getMessage()));
     }
+    @ExceptionHandler(SafetyCheckUnavailableException.class)
+    public ResponseEntity<Map<String, String>> handleSafetyCheckUnavailable(SafetyCheckUnavailableException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("message", e.getMessage()));
+    }
 }

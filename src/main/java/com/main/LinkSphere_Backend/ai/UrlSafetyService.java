@@ -2,6 +2,8 @@ package com.main.LinkSphere_Backend.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.main.LinkSphere_Backend.exception.SafetyCheckUnavailableException;
+import com.main.LinkSphere_Backend.exception.UnsafeUrlException;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -14,7 +16,7 @@ public class UrlSafetyService {
         this.groqService = groqService;
     }
 
-    public boolean isSuspicious(String url) {
+    public void assertSafe(String url) {
         String prompt = "Analyze this URL for signs of phishing, scams, or malicious intent "
                 + "based on its structure, domain, and patterns (typosquatting, urgency "
                 + "keywords, mismatched domains, suspicious TLD abuse). Respond with ONLY "
@@ -23,15 +25,22 @@ public class UrlSafetyService {
 
         String response = groqService.generateText(prompt);
         if (response == null) {
-            System.err.println("Safety check failed for: " + url + " — allowing by default");
-            return false;
+            throw new SafetyCheckUnavailableException(
+                    "Unable to verify this URL's safety right now. Please try again in a moment.");
         }
 
         try {
             JsonNode node = objectMapper.readTree(extractJson(response));
-            return node.path("suspicious").asBoolean(false);
+            boolean suspicious = node.path("suspicious").asBoolean(false);
+            if (suspicious) {
+                String reason = node.path("reason").asText("it matched patterns associated with phishing or scams");
+                throw new UnsafeUrlException("This URL was flagged as potentially unsafe: " + reason);
+            }
+        } catch (UnsafeUrlException e) {
+            throw e;
         } catch (Exception e) {
-            return false;
+            throw new SafetyCheckUnavailableException(
+                    "Unable to verify this URL's safety right now. Please try again in a moment.");
         }
     }
 
