@@ -3,4 +3,5 @@ import lombok.Data;
 @Data
 public class EmailChangeRequest {
     private String newEmail;
+    private String password;
 }

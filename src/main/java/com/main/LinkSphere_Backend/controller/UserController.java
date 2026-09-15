@@ -3,7 +3,6 @@ package com.main.LinkSphere_Backend.controller;
 import com.main.LinkSphere_Backend.dto.DeleteAccountRequest;
 import com.main.LinkSphere_Backend.dto.EmailChangeRequest;
 import com.main.LinkSphere_Backend.dto.UpdateUsernameRequest;
-import com.main.LinkSphere_Backend.dto.VerifyOtpRequest;
 import com.main.LinkSphere_Backend.security.jwt.JwtAuthenticationResponse;
 import com.main.LinkSphere_Backend.sevice.UserService;
 import lombok.AllArgsConstructor;
@@ -26,31 +25,17 @@ public class UserController {
         return ResponseEntity.ok(userService.updateUsername(principal.getName(), request.getNewUsername()));
     }
 
-    @PostMapping("/email/request-change")
+    @PatchMapping("/email")
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<?> requestEmailChange(@RequestBody EmailChangeRequest request, Principal principal) {
-        userService.requestEmailChange(principal.getName(), request.getNewEmail());
-        return ResponseEntity.ok(Map.of("message", "Verification code sent to your new email address."));
-    }
-
-    @PostMapping("/email/confirm-change")
-    @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<?> confirmEmailChange(@RequestBody VerifyOtpRequest request, Principal principal) {
-        userService.confirmEmailChange(principal.getName(), request.getOtp());
+    public ResponseEntity<?> updateEmail(@RequestBody EmailChangeRequest request, Principal principal) {
+        userService.updateEmail(principal.getName(), request.getNewEmail(), request.getPassword());
         return ResponseEntity.ok(Map.of("message", "Email address updated successfully."));
     }
 
-    @PostMapping("/delete-account/request")
+    @PostMapping("/delete-account")
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<?> requestAccountDeletion(@RequestBody DeleteAccountRequest request, Principal principal) {
-        userService.requestAccountDeletion(principal.getName(), request.getPassword());
-        return ResponseEntity.ok(Map.of("message", "Verification code sent to your email. Confirm to permanently delete your account."));
-    }
-
-    @PostMapping("/delete-account/confirm")
-    @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<?> confirmAccountDeletion(@RequestBody VerifyOtpRequest request, Principal principal) {
-        userService.confirmAccountDeletion(principal.getName(), request.getOtp());
+    public ResponseEntity<?> deleteAccount(@RequestBody DeleteAccountRequest request, Principal principal) {
+        userService.deleteAccount(principal.getName(), request.getPassword());
         return ResponseEntity.ok(Map.of("message", "Your account and all associated data have been permanently deleted."));
     }
 }

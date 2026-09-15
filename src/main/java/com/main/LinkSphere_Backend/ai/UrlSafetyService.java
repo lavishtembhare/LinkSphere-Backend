@@ -50,4 +50,4 @@ public class UrlSafetyService {
         if (start == -1 || end == -1) throw new IllegalArgumentException("No JSON in response");
         return text.substring(start, end + 1);
     }
-}
+}   

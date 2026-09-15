@@ -22,10 +22,6 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleTokenRefresh(TokenRefreshException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
     }
-    @ExceptionHandler(OtpException.class)
-    public ResponseEntity<Map<String, String>> handleOtp(OtpException e) {
-        return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
-    }
     @ExceptionHandler(DuplicateEmailException.class)
     public ResponseEntity<Map<String, String>> handleDuplicateEmail(DuplicateEmailException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", e.getMessage()));

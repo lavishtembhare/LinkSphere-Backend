@@ -1,7 +1,6 @@
 package com.main.LinkSphere_Backend.sevice;
 
 import com.main.LinkSphere_Backend.ai.ClickSummaryService;
-import com.main.LinkSphere_Backend.ai.GroqService;
 import com.main.LinkSphere_Backend.ai.LinkPreviewService;
 import com.main.LinkSphere_Backend.ai.LinkSearchService;
 import com.main.LinkSphere_Backend.ai.UrlSafetyService;
@@ -16,11 +15,11 @@ import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.stream.Collectors;
 
 @Service
@@ -32,12 +31,14 @@ public class UrlMappingService {
     private LinkPreviewService linkPreviewService;
     private ClickSummaryService clickSummaryService;
     private LinkSearchService linkSearchService;
-    private GroqService groqService;
+
+    private static final String CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    private final SecureRandom random = new SecureRandom();
 
     public UrlMappingDTO createShortUrl(String originalUrl, User user) {
         urlSafetyService.assertSafe(originalUrl);
 
-        String shortUrl = resolveShortUrl(originalUrl);
+        String shortUrl = generateShortUrl();
 
         UrlMapping urlMapping = new UrlMapping();
         urlMapping.setOriginalUrl(originalUrl);
@@ -47,30 +48,17 @@ public class UrlMappingService {
         UrlMapping savedUrlMapping = urlMappingRepository.save(urlMapping);
 
         linkPreviewService.generateAndSavePreview(savedUrlMapping.getId());
+        linkPreviewService.upgradeToSmartSlug(savedUrlMapping.getId(), originalUrl);
 
         return convertToDto(savedUrlMapping);
     }
 
-    private String resolveShortUrl(String originalUrl) {
-        String smartSlug = generateSmartSlug(originalUrl);
-        if (smartSlug != null) {
-            if (urlMappingRepository.findByShortUrl(smartSlug) == null) return smartSlug;
-            String withSuffix = smartSlug + "-" + generateShortUrl().substring(0, 4);
-            if (urlMappingRepository.findByShortUrl(withSuffix) == null) return withSuffix;
+    private String generateShortUrl() {
+        StringBuilder shortUrl = new StringBuilder(8);
+        for (int i = 0; i < 8; i++) {
+            shortUrl.append(CHARACTERS.charAt(random.nextInt(CHARACTERS.length())));
         }
-        return generateShortUrl();
-    }
-
-    private String generateSmartSlug(String originalUrl) {
-        String prompt = "Generate a short, memorable, URL-safe slug (2-4 words, lowercase, "
-                + "hyphen-separated, no special characters) that represents the destination "
-                + "of this URL. Respond with ONLY the slug, nothing else.\n\nURL: " + originalUrl;
-
-        String slug = groqService.generateText(prompt);
-        if (slug == null || slug.isBlank()) return null;
-
-        String cleaned = slug.trim().toLowerCase().replaceAll("[^a-z0-9-]", "").replaceAll("-{2,}", "-");
-        return (cleaned.isBlank() || cleaned.length() > 30) ? null : cleaned;
+        return shortUrl.toString();
     }
 
     private UrlMappingDTO convertToDto(UrlMapping urlMapping){
@@ -86,16 +74,6 @@ public class UrlMappingService {
         dto.setActive(urlMapping.isActive());
         dto.setDisabledReason(urlMapping.getDisabledReason());
         return dto;
-    }
-
-    private String generateShortUrl() {
-        String characters="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        Random random=new Random();
-        StringBuilder shortUrl=new StringBuilder(8);
-        for (int i=0;i<8;i++){
-            shortUrl.append(characters.charAt(random.nextInt(characters.length())));
-        }
-        return shortUrl.toString();
     }
 
     public List<UrlMappingDTO> getUrlsByUser(User user) {

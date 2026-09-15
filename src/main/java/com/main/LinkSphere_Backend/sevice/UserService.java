@@ -4,14 +4,10 @@ import com.main.LinkSphere_Backend.dto.LoginRequest;
 import com.main.LinkSphere_Backend.exception.DuplicateEmailException;
 import com.main.LinkSphere_Backend.exception.DuplicateUsernameException;
 import com.main.LinkSphere_Backend.exception.InvalidCredentialsException;
-import com.main.LinkSphere_Backend.exception.OtpException;
-import com.main.LinkSphere_Backend.models.OtpPurpose;
-import com.main.LinkSphere_Backend.models.OtpVerification;
 import com.main.LinkSphere_Backend.models.RefreshToken;
 import com.main.LinkSphere_Backend.models.UrlMapping;
 import com.main.LinkSphere_Backend.models.User;
 import com.main.LinkSphere_Backend.repo.ClickEventRepository;
-import com.main.LinkSphere_Backend.repo.OtpVerificationRepository;
 import com.main.LinkSphere_Backend.repo.UrlMappingRepository;
 import com.main.LinkSphere_Backend.repo.UserRepository;
 import com.main.LinkSphere_Backend.security.jwt.JwtAuthenticationResponse;
@@ -27,9 +23,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @AllArgsConstructor
@@ -39,56 +33,24 @@ public class UserService {
     private AuthenticationManager authenticationManager;
     private JwtUtils jwtUtils;
     private RefreshTokenService refreshTokenService;
-    private OtpService otpService;
-    private OtpVerificationRepository otpVerificationRepository;
     private UrlMappingRepository urlMappingRepository;
     private ClickEventRepository clickEventRepository;
 
     @Transactional
     public User registerUser(User user){
-        Optional<User> existing = userRepository.findByUsername(user.getUsername());
-
-        if (existing.isPresent()) {
-            User existingUser = existing.get();
-            if (existingUser.isEnabled()) {
-                throw new DuplicateUsernameException("Username '" + user.getUsername() + "' is already taken.");
-            }
-            if (!existingUser.getEmail().equalsIgnoreCase(user.getEmail())
-                    && userRepository.existsByEmail(user.getEmail())) {
-                throw new DuplicateEmailException("An account with that email address already exists.");
-            }
-            existingUser.setEmail(user.getEmail());
-            existingUser.setPassword(passwordEncoder.encode(user.getPassword()));
-            User saved = userRepository.save(existingUser);
-            otpService.generateAndSendOtp(saved, saved.getEmail(), OtpPurpose.REGISTRATION, "verifying your email address");
-            return saved;
+        if (userRepository.existsByUsername(user.getUsername())) {
+            throw new DuplicateUsernameException("Username '" + user.getUsername() + "' is already taken.");
         }
-
         if (userRepository.existsByEmail(user.getEmail())) {
             throw new DuplicateEmailException("An account with that email address already exists.");
         }
-
         user.setPassword(passwordEncoder.encode(user.getPassword()));
-        user.setEnabled(false);
-        User saved;
+        user.setEnabled(true);
         try {
-            saved = userRepository.save(user);
+            return userRepository.save(user);
         } catch (DataIntegrityViolationException e) {
             throw new DuplicateUsernameException("Username '" + user.getUsername() + "' is already taken.");
         }
-        otpService.generateAndSendOtp(saved, saved.getEmail(), OtpPurpose.REGISTRATION, "verifying your email address");
-        return saved;
-    }
-
-    @Transactional
-    public void verifyRegistrationOtp(String username, String otp) {
-        User user = findByUsername(username);
-        if (user.isEnabled()) {
-            throw new OtpException("This account is already verified — please log in.");
-        }
-        otpService.verifyOtp(user, OtpPurpose.REGISTRATION, otp);
-        user.setEnabled(true);
-        userRepository.save(user);
     }
 
     public JwtAuthenticationResponse authenticateUser(LoginRequest loginRequest){
@@ -133,70 +95,48 @@ public class UserService {
         return new JwtAuthenticationResponse(newAccessToken, refreshToken.getToken());
     }
 
-    public void requestEmailChange(String username, String newEmail) {
+    @Transactional
+    public void updateEmail(String username, String newEmail, String password) {
         User user = findByUsername(username);
+
+        if (!passwordEncoder.matches(password, user.getPassword())) {
+            throw new InvalidCredentialsException("Incorrect password.");
+        }
         if (newEmail.equalsIgnoreCase(user.getEmail())) {
-            throw new OtpException("That's already your current email address.");
+            throw new DuplicateEmailException("That's already your current email address.");
         }
         if (userRepository.existsByEmail(newEmail)) {
-            throw new OtpException("That email address is already in use.");
+            throw new DuplicateEmailException("That email address is already in use.");
         }
-        otpService.generateAndSendOtp(user, newEmail, OtpPurpose.EMAIL_CHANGE, "changing your email address");
-    }
 
-    @Transactional
-    public void confirmEmailChange(String username, String otp) {
-        User user = findByUsername(username);
-        OtpVerification record = otpService.verifyOtp(user, OtpPurpose.EMAIL_CHANGE, otp);
-        user.setEmail(record.getTargetEmail());
+        user.setEmail(newEmail);
         userRepository.save(user);
     }
 
-    public void initiatePasswordReset(String usernameOrEmail) {
-        userRepository.findByUsernameOrEmail(usernameOrEmail, usernameOrEmail).ifPresent(user ->
-                otpService.generateAndSendOtp(user, user.getEmail(), OtpPurpose.PASSWORD_RESET, "resetting your password")
-        );
-    }
+    // ---------- Forgot password — no email sent, matches username + email on file ----------
 
-    public String verifyPasswordResetOtp(String usernameOrEmail, String otp) {
-        User user = userRepository.findByUsernameOrEmail(usernameOrEmail, usernameOrEmail)
-                .orElseThrow(() -> new OtpException("Incorrect verification code."));
-        OtpVerification record = otpService.verifyOtp(user, OtpPurpose.PASSWORD_RESET, otp);
-        return record.getResetToken();
-    }
+    public void resetPasswordWithoutEmail(String username, String email, String newPassword) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new InvalidCredentialsException("Username and email do not match our records."));
 
-    @Transactional
-    public void resetPassword(String resetToken, String newPassword) {
-        OtpVerification record = otpVerificationRepository
-                .findByResetTokenAndPurpose(resetToken, OtpPurpose.PASSWORD_RESET)
-                .orElseThrow(() -> new OtpException("Invalid or expired reset token."));
-
-        if (!record.isVerified() || record.getExpiryDate().isBefore(LocalDateTime.now())) {
-            throw new OtpException("Invalid or expired reset token.");
+        if (email == null || !email.equalsIgnoreCase(user.getEmail())) {
+            throw new InvalidCredentialsException("Username and email do not match our records.");
         }
 
-        User user = record.getUser();
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
-
         refreshTokenService.deleteAllForUser(user);
-
-        record.setResetToken(null);
-        otpVerificationRepository.save(record);
     }
 
-    public void requestAccountDeletion(String username, String password) {
+    // ---------- Account deletion — password confirmation only ----------
+
+    @Transactional
+    public void deleteAccount(String username, String password) {
         User user = findByUsername(username);
         if (!passwordEncoder.matches(password, user.getPassword())) {
             throw new InvalidCredentialsException("Incorrect password.");
         }
-        otpService.generateAndSendOtp(user, user.getEmail(), OtpPurpose.ACCOUNT_DELETION, "confirming account deletion");
-    }
 
-    @Transactional
-    public void confirmAccountDeletion(String username, String otp) {
-        User user = findByUsername(username);
-        otpService.verifyOtp(user, OtpPurpose.ACCOUNT_DELETION, otp);
         List<UrlMapping> urlMappings = urlMappingRepository.findByUser(user);
         for (UrlMapping mapping : urlMappings) {
             clickEventRepository.deleteByUrlMapping(mapping);
@@ -204,7 +144,6 @@ public class UserService {
         urlMappingRepository.deleteAll(urlMappings);
 
         refreshTokenService.deleteAllForUser(user);
-        otpVerificationRepository.deleteByUser(user);
 
         userRepository.delete(user);
     }

@@ -38,13 +38,7 @@ public class AuthController {
         user.setPassword(registerRequest.getPassword());
         user.setRole("ROLE_USER");
         userService.registerUser(user);
-        return ResponseEntity.ok(Map.of("message", "Verification code sent to your email. Please verify to complete registration."));
-    }
-
-    @PostMapping("/register/verify-otp")
-    public ResponseEntity<?> verifyRegistrationOtp(@RequestBody VerifyRegistrationOtpRequest request) {
-        userService.verifyRegistrationOtp(request.getUsername(), request.getOtp());
-        return ResponseEntity.ok(Map.of("message", "Email verified — registration complete. You can now log in."));
+        return ResponseEntity.ok(Map.of("message", "Registration successful. You can now log in."));
     }
 
     @PostMapping("/refresh")
@@ -77,19 +71,7 @@ public class AuthController {
 
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequest request) {
-        userService.initiatePasswordReset(request.getUsernameOrEmail());
-        return ResponseEntity.ok(Map.of("message", "Check your email."));
-    }
-
-    @PostMapping("/forgot-password/verify-otp")
-    public ResponseEntity<?> verifyResetOtp(@RequestBody VerifyResetOtpRequest request) {
-        String resetToken = userService.verifyPasswordResetOtp(request.getUsernameOrEmail(), request.getOtp());
-        return ResponseEntity.ok(Map.of("resetToken", resetToken));
-    }
-
-    @PostMapping("/reset-password")
-    public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordRequest request) {
-        userService.resetPassword(request.getResetToken(), request.getNewPassword());
+        userService.resetPasswordWithoutEmail(request.getUsername(), request.getEmail(), request.getNewPassword());
         return ResponseEntity.ok(Map.of("message", "Password reset successfully. Please log in with your new password."));
     }
 }

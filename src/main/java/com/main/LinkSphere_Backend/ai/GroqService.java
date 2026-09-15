@@ -53,8 +53,8 @@ public class GroqService {
                     .bodyValue(requestBody)
                     .retrieve()
                     .bodyToMono(String.class)
-                    .timeout(Duration.ofSeconds(10))
-                    .retryWhen(Retry.backoff(2, Duration.ofSeconds(1)).filter(this::isRetryable))
+                    .timeout(Duration.ofSeconds(5))
+                    .retryWhen(Retry.backoff(1, Duration.ofMillis(500)).filter(this::isRetryable))
                     .block();
 
             return extractGroqText(rawResponse);

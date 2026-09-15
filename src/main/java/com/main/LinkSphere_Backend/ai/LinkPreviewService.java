@@ -34,6 +34,27 @@ public class LinkPreviewService {
         urlMappingRepository.save(mapping);
     }
 
+    @Async
+    public void upgradeToSmartSlug(Long urlMappingId, String originalUrl) {
+        String prompt = "Generate a short, memorable, URL-safe slug (2-4 words, lowercase, "
+                + "hyphen-separated, no special characters) that represents the destination "
+                + "of this URL. Respond with ONLY the slug, nothing else.\n\nURL: " + originalUrl;
+
+        String raw = groqService.generateText(prompt);
+        if (raw == null || raw.isBlank()) return;
+
+        String cleaned = raw.trim().toLowerCase().replaceAll("[^a-z0-9-]", "").replaceAll("-{2,}", "-");
+        if (cleaned.isBlank() || cleaned.length() > 30) return;
+
+        UrlMapping mapping = urlMappingRepository.findById(urlMappingId).orElse(null);
+        if (mapping == null) return;
+
+        if (urlMappingRepository.findByShortUrl(cleaned) == null) {
+            mapping.setShortUrl(cleaned);
+            urlMappingRepository.save(mapping);
+        }
+    }
+
     public LinkPreview fetchPreview(String url) {
         if (!isSafeToFetch(url)) {
             return new LinkPreview(null, null);
